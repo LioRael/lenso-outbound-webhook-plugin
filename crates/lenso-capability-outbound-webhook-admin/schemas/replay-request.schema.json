@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["delivery_id"],
+  "properties": {
+    "delivery_id": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "title": "ReplayRequest"
+}

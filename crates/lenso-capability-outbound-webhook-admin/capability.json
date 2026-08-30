@@ -1,0 +1,29 @@
+{
+  "id": "lenso.outbound-webhook-admin@1",
+  "version": "1.0.0",
+  "portable": true,
+  "cross_lane_transfer": true,
+  "operations": [
+    {
+      "name": "dispatch",
+      "interaction": "request",
+      "request_schema": "schemas/dispatch-request.schema.json",
+      "response_schema": "schemas/dispatch-response.schema.json",
+      "domain_error_schema": "schemas/dispatch-error.schema.json"
+    },
+    {
+      "name": "inspect",
+      "interaction": "request",
+      "request_schema": "schemas/inspect-request.schema.json",
+      "response_schema": "schemas/inspect-response.schema.json",
+      "domain_error_schema": "schemas/inspect-error.schema.json"
+    },
+    {
+      "name": "replay",
+      "interaction": "request",
+      "request_schema": "schemas/replay-request.schema.json",
+      "response_schema": "schemas/replay-response.schema.json",
+      "domain_error_schema": "schemas/replay-error.schema.json"
+    }
+  ]
+}

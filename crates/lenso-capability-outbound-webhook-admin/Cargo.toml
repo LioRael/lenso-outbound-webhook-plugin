@@ -1,0 +1,30 @@
+[package]
+name = "lenso-capability-outbound-webhook-admin"
+version = "0.1.0"
+description = "Portable operational Capability for the Lenso Outbound Webhook Plugin."
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+build = "build.rs"
+
+[dependencies]
+futures.workspace = true
+lenso-contract-authoring.workspace = true
+lenso-contract-runtime.workspace = true
+lenso-kernel.workspace = true
+lenso-plugin-authoring.workspace = true
+schemars = "1.2"
+serde.workspace = true
+serde_json.workspace = true
+
+[build-dependencies]
+lenso-contract-authoring.workspace = true
+lenso-contract-codegen.workspace = true
+schemars = "1.2"
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

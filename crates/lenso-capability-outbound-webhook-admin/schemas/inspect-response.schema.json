@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "delivery_id",
+    "event_id",
+    "event_type",
+    "endpoint_origin",
+    "payload_sha256",
+    "status",
+    "attempts",
+    "max_attempts",
+    "replay_count",
+    "last_receipt"
+  ],
+  "properties": {
+    "delivery_id": {
+      "type": "string"
+    },
+    "event_id": {
+      "type": "string"
+    },
+    "event_type": {
+      "type": "string"
+    },
+    "endpoint_origin": {
+      "type": "string"
+    },
+    "payload_sha256": {
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/InspectResponseStatus"
+    },
+    "attempts": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "max_attempts": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100
+    },
+    "replay_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000
+    },
+    "last_receipt": {
+      "$ref": "#/$defs/Nullable_InspectResponseLastReceipt"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "InspectResponseLastReceipt": {
+      "type": "object",
+      "required": ["attempt", "outcome", "http_status", "response_sha256", "occurred_at"],
+      "properties": {
+        "attempt": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "outcome": {
+          "type": "string"
+        },
+        "http_status": {
+          "$ref": "#/$defs/Nullable_string"
+        },
+        "response_sha256": {
+          "$ref": "#/$defs/Nullable_string"
+        },
+        "occurred_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "additionalProperties": false
+    },
+    "InspectResponseStatus": {
+      "enum": ["queued", "delivering", "retry_scheduled", "delivered", "dead_letter"]
+    },
+    "Nullable_InspectResponseLastReceipt": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/InspectResponseLastReceipt"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "Nullable_string": {
+      "type": ["string", "null"]
+    }
+  },
+  "title": "InspectResponse"
+}

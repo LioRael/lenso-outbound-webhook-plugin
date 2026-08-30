@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["delivery_id", "created", "status"],
+  "properties": {
+    "delivery_id": {
+      "type": "string"
+    },
+    "created": {
+      "type": "boolean"
+    },
+    "status": {
+      "$ref": "#/$defs/EnqueueResponseStatus"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "EnqueueResponseStatus": {
+      "enum": ["queued", "delivering", "delivered", "retry_scheduled", "dead_letter"]
+    }
+  },
+  "title": "EnqueueResponse"
+}
