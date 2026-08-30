@@ -218,9 +218,124 @@ async fn postgres_queue_preserves_idempotency_fencing_retry_receipts_and_replay(
         "delivered"
     );
 
+    bounded_expired_maintenance_acceptance(&postgres).await;
+
     postgres.pool().close().await;
     sqlx::query(AssertSqlSafe(drop_schema.as_str()))
         .execute(&mut cleanup)
         .await
         .unwrap();
+}
+
+async fn bounded_expired_maintenance_acceptance(postgres: &OwnedPostgres) {
+    const EXHAUSTED_DELIVERIES: i64 = storage::EXPIRED_DELIVERY_MAINTENANCE_BATCH_LIMIT * 2 + 16;
+    seed_expired_maintenance_backlog(postgres, EXHAUSTED_DELIVERIES).await;
+
+    let recovered = storage::claim_due(postgres, "backlog", 30)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(recovered.delivery_id, "backlog-retryable");
+    assert_eq!(recovered.attempts, 2);
+    let (first_receipts, first_retired): (i64, i64) = sqlx::query_as(
+        "SELECT \
+             (SELECT count(*) FROM webhook_delivery_attempts AS attempt \
+              JOIN webhook_deliveries AS delivery USING (delivery_id) \
+              WHERE delivery.queue_name = 'backlog'), \
+             (SELECT count(*) FROM webhook_deliveries \
+              WHERE queue_name = 'backlog' AND status = 'dead_letter')",
+    )
+    .fetch_one(postgres.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        first_receipts,
+        storage::EXPIRED_DELIVERY_MAINTENANCE_BATCH_LIMIT
+    );
+    assert_eq!(first_retired, first_receipts - 1);
+
+    let (first_worker, second_worker) = tokio::join!(
+        storage::claim_due(postgres, "backlog", 30),
+        storage::claim_due(postgres, "backlog", 30),
+    );
+    let first_worker = first_worker.unwrap().unwrap();
+    let second_worker = second_worker.unwrap().unwrap();
+    assert_ne!(first_worker.delivery_id, second_worker.delivery_id);
+    assert!(first_worker.delivery_id.starts_with("backlog-queued-"));
+    assert!(second_worker.delivery_id.starts_with("backlog-queued-"));
+
+    let (receipts, unique_receipts, retired): (i64, i64, i64) = sqlx::query_as(
+        "SELECT \
+             count(*), \
+             count(DISTINCT (attempt.delivery_id, attempt.replay_count, attempt.attempt)), \
+             count(*) FILTER (WHERE delivery.status = 'dead_letter') \
+         FROM webhook_delivery_attempts AS attempt \
+         JOIN webhook_deliveries AS delivery USING (delivery_id) \
+         WHERE delivery.queue_name = 'backlog'",
+    )
+    .fetch_one(postgres.pool())
+    .await
+    .unwrap();
+    assert_eq!(receipts, EXHAUSTED_DELIVERIES + 1);
+    assert_eq!(unique_receipts, receipts);
+    assert_eq!(retired, EXHAUSTED_DELIVERIES);
+
+    assert!(
+        storage::claim_due(postgres, "backlog", 30)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let receipts_after_idle_claim: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM webhook_delivery_attempts AS attempt \
+         JOIN webhook_deliveries AS delivery USING (delivery_id) \
+         WHERE delivery.queue_name = 'backlog'",
+    )
+    .fetch_one(postgres.pool())
+    .await
+    .unwrap();
+    assert_eq!(receipts_after_idle_claim, receipts);
+}
+
+async fn seed_expired_maintenance_backlog(postgres: &OwnedPostgres, exhausted_deliveries: i64) {
+    sqlx::query(
+        "INSERT INTO webhook_deliveries (\
+             delivery_id, event_id, event_type, endpoint_url, endpoint_origin, \
+             payload_snapshot, payload_sha256, queue_name, status, available_at, \
+             lease_expires_at, attempts, max_attempts\
+         ) \
+         SELECT 'backlog-exhausted-' || item, 'backlog-event-' || item, 'backlog.test', \
+                'https://hooks.example.test/events', 'https://hooks.example.test', \
+                '{}'::bytea, 'snapshot-sha256', 'backlog', 'delivering', \
+                transaction_timestamp() - interval '1 hour', \
+                transaction_timestamp() - interval '1 hour', 3, 3 \
+         FROM generate_series(1, $1) AS item",
+    )
+    .bind(exhausted_deliveries)
+    .execute(postgres.pool())
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO webhook_deliveries (\
+             delivery_id, event_id, event_type, endpoint_url, endpoint_origin, \
+             payload_snapshot, payload_sha256, queue_name, status, available_at, \
+             lease_expires_at, attempts, max_attempts\
+         ) VALUES \
+             ('backlog-retryable', 'backlog-retryable-event', 'backlog.test', \
+              'https://hooks.example.test/events', 'https://hooks.example.test', \
+              '{}'::bytea, 'snapshot-sha256', 'backlog', 'delivering', \
+              transaction_timestamp() - interval '4 hours', \
+              transaction_timestamp() - interval '2 hours', 1, 3), \
+             ('backlog-queued-1', 'backlog-queued-event-1', 'backlog.test', \
+              'https://hooks.example.test/events', 'https://hooks.example.test', \
+              '{}'::bytea, 'snapshot-sha256', 'backlog', 'queued', \
+              transaction_timestamp(), NULL, 0, 3), \
+             ('backlog-queued-2', 'backlog-queued-event-2', 'backlog.test', \
+              'https://hooks.example.test/events', 'https://hooks.example.test', \
+              '{}'::bytea, 'snapshot-sha256', 'backlog', 'queued', \
+              transaction_timestamp(), NULL, 0, 3)",
+    )
+    .execute(postgres.pool())
+    .await
+    .unwrap();
 }

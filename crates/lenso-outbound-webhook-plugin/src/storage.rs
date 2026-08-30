@@ -3,6 +3,8 @@ use sqlx::Row;
 use thiserror::Error;
 use time::OffsetDateTime;
 
+pub(crate) const EXPIRED_DELIVERY_MAINTENANCE_BATCH_LIMIT: i64 = 64;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum DeliveryStatus {
     Queued,
@@ -194,43 +196,41 @@ pub(crate) async fn claim_due(
         .await
         .map_err(db("begin delivery claim"))?;
 
-    sqlx::query(
-        "INSERT INTO webhook_delivery_attempts \
-         (delivery_id, replay_count, attempt, outcome, occurred_at) \
-         SELECT delivery_id, replay_count, attempts, 'lease_expired', transaction_timestamp() \
-         FROM webhook_deliveries \
-         WHERE queue_name = $1 AND status = 'delivering' \
-           AND lease_expires_at <= transaction_timestamp() \
-         ON CONFLICT (delivery_id, replay_count, attempt) DO NOTHING",
-    )
-    .bind(queue_name)
-    .execute(&mut *transaction)
-    .await
-    .map_err(db("receipt expired delivery leases"))?;
-
-    sqlx::query(
-        "UPDATE webhook_deliveries \
-         SET status = 'dead_letter', lease_expires_at = NULL, \
-             updated_at = transaction_timestamp() \
-         WHERE queue_name = $1 AND status = 'delivering' \
-           AND lease_expires_at <= transaction_timestamp() AND attempts >= max_attempts",
-    )
-    .bind(queue_name)
-    .execute(&mut *transaction)
-    .await
-    .map_err(db("retire exhausted delivery leases"))?;
-
     let row = sqlx::query(
-        "WITH candidate AS ( \
-             SELECT delivery_id FROM webhook_deliveries \
-             WHERE queue_name = $1 AND attempts < max_attempts AND ( \
-                 (status IN ('queued', 'retry_scheduled') \
-                     AND available_at <= transaction_timestamp()) \
-                 OR (status = 'delivering' \
-                     AND lease_expires_at <= transaction_timestamp()) \
+        "WITH expired AS MATERIALIZED ( \
+             SELECT delivery_id, replay_count, attempts, max_attempts \
+             FROM webhook_deliveries \
+             WHERE queue_name = $1 AND status = 'delivering' \
+               AND lease_expires_at <= transaction_timestamp() \
+             ORDER BY lease_expires_at, delivery_id \
+             FOR UPDATE SKIP LOCKED LIMIT $3 \
+         ), receipted AS ( \
+             INSERT INTO webhook_delivery_attempts \
+                 (delivery_id, replay_count, attempt, outcome, occurred_at) \
+             SELECT delivery_id, replay_count, attempts, 'lease_expired', \
+                    transaction_timestamp() \
+             FROM expired \
+             ON CONFLICT (delivery_id, replay_count, attempt) DO NOTHING \
+         ), retired AS ( \
+             UPDATE webhook_deliveries AS delivery \
+             SET status = 'dead_letter', lease_expires_at = NULL, \
+                 updated_at = transaction_timestamp() \
+             FROM expired \
+             WHERE delivery.delivery_id = expired.delivery_id \
+               AND expired.attempts >= expired.max_attempts \
+             RETURNING delivery.delivery_id \
+         ), candidate AS ( \
+             SELECT delivery.delivery_id FROM webhook_deliveries AS delivery \
+             WHERE delivery.queue_name = $1 \
+               AND delivery.attempts < delivery.max_attempts AND ( \
+                 (delivery.status IN ('queued', 'retry_scheduled') \
+                     AND delivery.available_at <= transaction_timestamp()) \
+                 OR (delivery.status = 'delivering' \
+                     AND delivery.lease_expires_at <= transaction_timestamp() \
+                     AND delivery.delivery_id IN (SELECT delivery_id FROM expired)) \
              ) \
-             ORDER BY available_at, created_at, delivery_id \
-             FOR UPDATE SKIP LOCKED LIMIT 1 \
+             ORDER BY delivery.available_at, delivery.created_at, delivery.delivery_id \
+             FOR UPDATE OF delivery SKIP LOCKED LIMIT 1 \
          ) \
          UPDATE webhook_deliveries AS delivery \
          SET status = 'delivering', attempts = delivery.attempts + 1, \
@@ -248,6 +248,7 @@ pub(crate) async fn claim_due(
     .bind(f64::from(
         i32::try_from(lease_seconds).expect("validated lease seconds"),
     ))
+    .bind(EXPIRED_DELIVERY_MAINTENANCE_BATCH_LIMIT)
     .fetch_optional(&mut *transaction)
     .await
     .map_err(db("claim due delivery"))?;
