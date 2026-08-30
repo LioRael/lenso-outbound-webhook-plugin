@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    { "const": "forbidden" },
+    { "const": "invalid_delivery" },
+    { "const": "not_found" },
+    { "const": "not_dead_letter" }
+  ]
+}

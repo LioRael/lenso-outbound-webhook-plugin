@@ -1,0 +1,42 @@
+[package]
+name = "lenso-outbound-webhook-plugin"
+version = "0.1.0"
+description = "Durable, signed outbound Webhook delivery Plugin for Lenso applications."
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[package.metadata.lenso]
+plugin-id = "lenso.outbound-webhook"
+root-slot = "outbound-webhook"
+
+[features]
+default = []
+postgres-acceptance = []
+
+[dependencies]
+futures.workspace = true
+hmac.workspace = true
+lenso.workspace = true
+lenso-capability-http-client.workspace = true
+lenso-capability-outbound-webhook = { path = "../lenso-capability-outbound-webhook", version = "0.1.0" }
+lenso-capability-outbound-webhook-admin = { path = "../lenso-capability-outbound-webhook-admin", version = "0.1.0" }
+lenso-capability-secrets.workspace = true
+lenso-kernel.workspace = true
+lenso-postgres-kit.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+time.workspace = true
+url.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+tokio = { version = "1.52", features = ["macros", "rt", "time"] }
+
+[lints]
+workspace = true

@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["outcome", "delivery_id", "receipt"],
+  "properties": {
+    "outcome": {
+      "$ref": "#/$defs/DispatchResponseOutcome"
+    },
+    "delivery_id": {
+      "$ref": "#/$defs/Nullable_string"
+    },
+    "receipt": {
+      "$ref": "#/$defs/Nullable_DispatchResponseReceipt"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "DispatchResponseOutcome": {
+      "enum": ["idle", "delivered", "retry_scheduled", "dead_lettered"]
+    },
+    "DispatchResponseReceipt": {
+      "type": "object",
+      "required": ["attempt", "outcome", "http_status", "response_sha256", "occurred_at"],
+      "properties": {
+        "attempt": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "outcome": {
+          "type": "string"
+        },
+        "http_status": {
+          "$ref": "#/$defs/Nullable_string"
+        },
+        "response_sha256": {
+          "$ref": "#/$defs/Nullable_string"
+        },
+        "occurred_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "additionalProperties": false
+    },
+    "Nullable_DispatchResponseReceipt": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DispatchResponseReceipt"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "Nullable_string": {
+      "type": ["string", "null"]
+    }
+  },
+  "title": "DispatchResponse"
+}
