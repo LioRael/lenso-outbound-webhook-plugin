@@ -38,8 +38,8 @@ Out of scope: delivery retry policy, receipt identity, replay count, and stale-w
 
 ## Verification
 
-- `lenso-cargo test -p lenso-outbound-webhook-plugin --include-ignored` -> all pass.
-- `lenso-cargo check -p lenso-outbound-webhook-plugin --all-targets` -> exit 0.
+- `cargo test -p lenso-outbound-webhook-plugin --include-ignored` -> all pass.
+- `cargo check -p lenso-outbound-webhook-plugin --all-targets` -> exit 0.
 - `git diff --check` -> no output.
 
 ## STOP conditions
